@@ -1,29 +1,27 @@
 const express = require("express")
 const cors = require("cors")
+const mongoose = require("mongoose")
+const dns = require("dns")
+require("dotenv").config()
+
+const Task = require("./models/Task")
 
 const app = express()
 
 app.use(cors())
 app.use(express.json())
 
-const tasks = [
-  {
-    id: 1,
-    title: "Practice Java",
-    description: "Learn Java concepts",
-    priority: "High",
-    dueDate: "2026-09-22",
-    completed: false
-  },
-  {
-    id: 2,
-    title: "Complete Assignment",
-    description: "Finish web development assignment",
-    priority: "Medium",
-    dueDate: "2026-09-24",
-    completed: true
-  }
-]
+dns.setServers(["8.8.8.8", "1.1.1.1"])
+
+mongoose
+  .connect(process.env.MONGO_URI)
+  .then(() => {
+    console.log("MongoDB connected successfully")
+  })
+  .catch((error) => {
+    console.log("MongoDB connection failed")
+    console.log(error.message)
+  })
 
 app.get("/", (req, res) => {
   res.json({
@@ -31,62 +29,82 @@ app.get("/", (req, res) => {
   })
 })
 
-app.get("/api/tasks", (req, res) => {
-  res.json(tasks)
-})
+app.get("/api/tasks", async (req, res) => {
+  try {
+    const tasks = await Task.find().sort({ createdAt: -1 })
 
-app.post("/api/tasks", (req, res) => {
-  const newTask = {
-    id: Date.now(),
-    title: req.body.title,
-    description: req.body.description,
-    priority: req.body.priority,
-    dueDate: req.body.dueDate,
-    completed: false
-  }
-
-  tasks.push(newTask)
-
-  res.status(201).json(newTask)
-})
-
-app.put("/api/tasks/:id", (req, res) => {
-  const id = Number(req.params.id)
-
-  const task = tasks.find((task) => task.id === id)
-
-  if (!task) {
-    return res.status(404).json({
-      message: "Task not found"
+    res.json(tasks)
+  } catch (error) {
+    res.status(500).json({
+      message: error.message
     })
   }
-
-  task.title = req.body.title ?? task.title
-  task.description = req.body.description ?? task.description
-  task.priority = req.body.priority ?? task.priority
-  task.dueDate = req.body.dueDate ?? task.dueDate
-  task.completed = req.body.completed ?? task.completed
-
-  res.json(task)
 })
 
-app.delete("/api/tasks/:id", (req, res) => {
-  const id = Number(req.params.id)
+app.post("/api/tasks", async (req, res) => {
+  try {
+    const newTask = new Task({
+      title: req.body.title,
+      description: req.body.description,
+      priority: req.body.priority,
+      dueDate: req.body.dueDate,
+      completed: false
+    })
 
-  const taskIndex = tasks.findIndex((task) => task.id === id)
+    const savedTask = await newTask.save()
 
-  if (taskIndex === -1) {
-    return res.status(404).json({
-      message: "Task not found"
+    res.status(201).json(savedTask)
+  } catch (error) {
+    res.status(400).json({
+      message: error.message
     })
   }
+})
 
-  const deletedTask = tasks.splice(taskIndex, 1)
+app.put("/api/tasks/:id", async (req, res) => {
+  try {
+    const updatedTask = await Task.findByIdAndUpdate(
+      req.params.id,
+      req.body,
+      {
+        new: true,
+        runValidators: true
+      }
+    )
 
-  res.json({
-    message: "Task deleted successfully",
-    task: deletedTask[0]
-  })
+    if (!updatedTask) {
+      return res.status(404).json({
+        message: "Task not found"
+      })
+    }
+
+    res.json(updatedTask)
+  } catch (error) {
+    res.status(400).json({
+      message: error.message
+    })
+  }
+})
+
+app.delete("/api/tasks/:id", async (req, res) => {
+  try {
+    const deletedTask = await Task.findByIdAndDelete(req.params.id)
+
+    if (!deletedTask) {
+      return res.status(404).json({
+        message: "Task not found"
+      })
+    }
+
+    res.json({
+      message: "Task deleted successfully",
+      task: deletedTask
+    })
+  } catch (error) {
+    res.status(400).json({
+      message: error.message
+    })
+  }
 })
 
 const PORT = 5000
